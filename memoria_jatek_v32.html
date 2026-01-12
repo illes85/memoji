@@ -323,79 +323,43 @@
         </div>
     </div>
 
-    <!-- Firebase Script -->
-    <script type="module">
-        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
-        import { getAuth, signInAnonymously, signInWithCustomToken } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
-        import { getFirestore, collection, addDoc, query, orderBy, limit, onSnapshot, serverTimestamp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+    <!-- API Script (Firebase helyett PHP) -->
+    <script>
+        window.apiApp = {
+            isReady: true,
+            saveScore: async (data) => {
+                // Pontszámítás: ugyanaz a logika, mint korábban
+                const scoreBase = data.isTimeBased 
+                    ? (data.maxTime * 100) - (data.timeElapsed * 2) - (data.incorrectMoves * 5)
+                    : -(data.totalMoves * 10) - (data.incorrectMoves * 5);
 
-        const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
-        const firebaseConfig = JSON.parse(typeof __firebase_config !== 'undefined' ? __firebase_config : '{}');
-        const initialAuthToken = typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : null;
+                const payload = { ...data, score: scoreBase };
 
-        window.firebaseApp = { db: null, userId: null, saveScore: null, loadLeaderboard: null, isReady: false };
-        let isFirebaseInit = false; // Új jelző a kezdeti inicializáláshoz
-
-        async function initFirebase() {
-            if (isFirebaseInit) return; // Csak egyszer fuss le
-            isFirebaseInit = true;
-
-            try {
-                const app = initializeApp(firebaseConfig);
-                const db = getFirestore(app);
-                const auth = getAuth(app);
-                
-                if (initialAuthToken) await signInWithCustomToken(auth, initialAuthToken);
-                else await signInAnonymously(auth);
-                
-                const userId = auth.currentUser?.uid || crypto.randomUUID();
-                
-                // Export functions
-                window.firebaseApp.db = db;
-                window.firebaseApp.userId = userId;
-                window.firebaseApp.isReady = true; // MOST állítjuk be, hogy kész van
-
-                window.firebaseApp.saveScore = async (data) => {
-                    if (!window.firebaseApp.isReady) throw new Error("Firebase nem elérhető.");
-                    const col = collection(db, `/artifacts/${appId}/public/data/memory_scores`);
-                    
-                    // Pontszámítás: minél kisebb idő és lépés, annál jobb (ezért a mínusz előjel)
-                    const scoreBase = data.isTimeBased 
-                        ? (data.maxTime * 100) - (data.timeElapsed * 2) - (data.incorrectMoves * 5)
-                        : -(data.totalMoves * 10) - (data.incorrectMoves * 5); // Csak lépésnél a lépések számítanak negatívan
-
-                    await addDoc(col, {
-                        ...data,
-                        userId,
-                        score: scoreBase,
-                        createdAt: serverTimestamp()
+                try {
+                    const response = await fetch('scores.php', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(payload)
                     });
-                };
-
-                window.firebaseApp.loadLeaderboard = (callback) => {
-                    if (!window.firebaseApp.isReady) {
-                        console.log("Firebase nem elérhető, betöltés kihagyva.");
-                        return () => {}; // Üres unsub
-                    }
-                    const col = collection(db, `/artifacts/${appId}/public/data/memory_scores`);
-                    const q = query(col, orderBy("score", "desc"), limit(10));
-                     return onSnapshot(q, (snapshot) => {
-                        const scores = [];
-                        snapshot.forEach(doc => scores.push(doc.data()));
-                        callback(scores);
-                    }, (err) => {
-                        console.error("Firebase hiba:", err);
-                        callback([]);
-                    });
-                };
-                
-            } catch (e) {
-                console.error("Firebase Init Error:", e);
-                window.firebaseApp.isReady = false;
+                    return await response.json();
+                } catch (e) {
+                    console.error("API Mentési hiba:", e);
+                    throw e;
+                }
+            },
+            loadLeaderboard: async (callback) => {
+                try {
+                    const response = await fetch('scores.php');
+                    const data = await response.json();
+                    callback(data);
+                } catch (e) {
+                    console.error("API Betöltési hiba:", e);
+                    callback([]);
+                }
+                // Visszaadunk egy üres leállító függvényt a kompatibilitás miatt
+                return () => {};
             }
-        }
-        // Az inicializálást itt hívjuk meg
-        initFirebase();
+        };
     </script>
 
     <script>
@@ -697,7 +661,7 @@
             container.innerHTML = '<div class="p-8 text-center text-slate-500 animate-pulse">Adatok betöltése...</div>';
 
             // Ellenőrzés, hogy a Firebase készen áll-e
-            if (!window.firebaseApp.isReady) {
+            if (!window.apiApp.isReady) {
                 // Ha még nincs kész, adunk neki 1.5 mp-et
                 setTimeout(() => {
                     if (window.firebaseApp.isReady) {
@@ -714,10 +678,10 @@
 
         function loadScores() {
              const container = document.getElementById('scores-container');
-             if (window.firebaseApp.loadLeaderboard) {
+             if (window.apiApp.loadLeaderboard) {
                 if (state.leaderboardUnsub) state.leaderboardUnsub(); // Előző listenert leállítjuk
                 
-                state.leaderboardUnsub = window.firebaseApp.loadLeaderboard((data) => {
+                state.leaderboardUnsub = window.apiApp.loadLeaderboard((data) => {
                     if (!data || data.length === 0) {
                         container.innerHTML = '<div class="p-8 text-center text-slate-500">Még nincs rekord. Te lehetsz az első!</div>';
                         return;
@@ -817,8 +781,8 @@
 
             document.getElementById('submit-score-button').onclick = () => {
                 const name = els.nameInput.value.trim() || 'Névtelen';
-                if (window.firebaseApp.saveScore && state.pendingScore) {
-                    window.firebaseApp.saveScore({ ...state.pendingScore, playerName: name })
+                if (window.apiApp.saveScore && state.pendingScore) {
+                    window.apiApp.saveScore({ ...state.pendingScore, playerName: name })
                         .then(() => {
                             els.modal.classList.add('hidden');
                             els.nameInput.value = '';
