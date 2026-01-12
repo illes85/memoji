@@ -1,0 +1,852 @@
+<!DOCTYPE html>
+<html lang="hu">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Memóriajáték</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Tone.js a hanghatásokhoz és zenéhez -->
+    <script src="https://unpkg.com/tone@14.8.49/build/Tone.js"></script>
+    
+    <!-- Google Font a színes emojikhoz (Flags) és a szöveghez -->
+    <link href="https://fonts.googleapis.com/css2?family=Noto+Color+Emoji&family=Inter:wght@400;700&display=swap" rel="stylesheet">
+
+    <style>
+        /* Egyedi stílusok */
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #0f172a; /* Még sötétebb kék (slate-900) a synthwave hangulathoz */
+            color: #e2e8f0;
+        }
+        
+        #main-container { transition: all 0.3s ease; }
+
+        /* Játéktábla - alapbeállítás */
+        .game-grid {
+            display: grid;
+            gap: 0.75rem;
+            max-width: 600px;
+            margin: 0 auto;
+            /* Alapértelmezett, ha valamiért nem töltődne be a class */
+            grid-template-columns: repeat(4, 1fr); 
+        }
+
+        /* --- JAVÍTOTT RÁCS ELRENDEZÉSEK --- */
+        .game-grid.very-easy { grid-template-columns: repeat(3, 1fr); max-width: 400px; }
+        .game-grid.easy { grid-template-columns: repeat(4, 1fr); }
+        .game-grid.medium { grid-template-columns: repeat(4, 1fr); }
+        .game-grid.hard { grid-template-columns: repeat(4, 1fr); }
+        .game-grid.extra-hard { grid-template-columns: repeat(6, 1fr); max-width: 800px; }
+
+        /* Kártya */
+        .card {
+            width: 100%;
+            padding-top: 100%; /* Négyzet arány */
+            position: relative;
+            transform-style: preserve-3d;
+            transition: transform 0.6s cubic-bezier(0.4, 0.0, 0.2, 1);
+            cursor: pointer;
+            border-radius: 0.75rem;
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.3), 0 2px 4px -2px rgba(0, 0, 0, 0.2);
+        }
+
+        .card.empty-slot {
+            background-color: transparent;
+            box-shadow: none;
+            cursor: default;
+            pointer-events: none;
+        }
+
+        .card.flipped { transform: rotateY(180deg); }
+
+        /* Kártya oldalak */
+        .card-face {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            backface-visibility: hidden;
+            border-radius: 0.75rem;
+            user-select: none;
+            overflow: hidden;
+            
+            /* Font beállítások az ikonokhoz */
+            font-family: 'Noto Color Emoji', 'Apple Color Emoji', 'Segoe UI Emoji', sans-serif;
+            font-weight: normal;
+            line-height: 1;
+        }
+        
+        /* --- IKON MÉRETEK --- */
+        .card-face { font-size: 4rem; } 
+        
+        .game-grid.very-easy .card-face { font-size: 5.5rem; } 
+        .game-grid.easy .card-face, 
+        .game-grid.medium .card-face { font-size: 4.5rem; } 
+        .game-grid.hard .card-face { font-size: 3.5rem; } 
+        .game-grid.extra-hard .card-face { font-size: 2.8rem; } 
+        
+        @media (max-width: 480px) {
+            .game-grid.very-easy .card-face { font-size: 4rem; }
+            .game-grid.easy .card-face { font-size: 3rem; }
+            .game-grid.medium .card-face { font-size: 2.8rem; }
+            .game-grid.hard .card-face { font-size: 2.5rem; }
+            .game-grid.extra-hard .card-face { font-size: 1.8rem; }
+        }
+        
+        /* Hátlap */
+        .card-back {
+            background: linear-gradient(135deg, #6366f1, #4f46e5); /* Indigo színátmenet */
+            color: rgba(255,255,255,0.8);
+            border: 2px solid #818cf8;
+            font-family: 'Inter', sans-serif;
+            font-size: 2.5rem !important; /* A kérdőjel maradjon fix méretű */
+            font-weight: 700;
+        }
+
+        /* Előlap */
+        .card-front {
+            background-color: #f8fafc;
+            transform: rotateY(180deg);
+        }
+
+        /* Matched */
+        .card.matched {
+            animation: pulse-match 0.5s ease-out forwards;
+        }
+        @keyframes pulse-match {
+            0% { transform: rotateY(180deg) scale(1); opacity: 1; }
+            50% { transform: rotateY(180deg) scale(1.1); opacity: 0.8; }
+            100% { transform: rotateY(180deg) scale(0.9); opacity: 0; pointer-events: none; }
+        }
+
+        /* UI Elemek */
+        .button-action {
+            background: linear-gradient(to bottom, #f59e0b, #d97706);
+            box-shadow: 0 4px 0 #92400e;
+            transition: all 0.1s;
+        }
+        .button-action:active {
+            box-shadow: 0 0 0 #92400e;
+            transform: translateY(4px);
+        }
+        .button-secondary {
+            background-color: #334155;
+            box-shadow: 0 4px 0 #1e293b;
+            transition: all 0.1s;
+        }
+        .button-secondary:active {
+            box-shadow: 0 0 0 #1e293b;
+            transform: translateY(4px);
+        }
+
+        /* Ranglista */
+        .score-row:nth-child(odd) { background-color: rgba(255,255,255,0.05); }
+        .score-row:nth-child(even) { background-color: rgba(255,255,255,0.02); }
+        .top-rank { color: #fbbf24; font-weight: bold; text-shadow: 0 0 10px rgba(251, 191, 36, 0.5); }
+    </style>
+</head>
+<body class="flex flex-col items-center justify-center min-h-screen p-4">
+
+    <div id="main-container" class="w-full max-w-lg p-6 bg-slate-800 rounded-2xl shadow-2xl border border-slate-700">
+        <h1 class="text-4xl font-extrabold text-center mb-8 text-transparent bg-clip-text bg-gradient-to-r from-indigo-400 to-pink-500 tracking-wider uppercase drop-shadow-sm">
+            Memória Mester
+        </h1>
+
+        <!-- 1. INDÍTÓKÉPERNYŐ -->
+        <div id="start-screen" class="screen">
+            <div class="flex flex-col gap-4 p-4">
+                <div class="text-center mb-8">
+                    <div class="text-7xl mb-4 animate-bounce">👾</div>
+                    <p class="text-slate-400">Edzd az agyad és döntsd meg a rekordot!</p>
+                </div>
+                
+                <button id="start-button" class="button-action text-white font-bold py-4 px-6 rounded-xl text-xl w-full">
+                    JÁTÉK INDÍTÁSA
+                </button>
+                
+                <div class="grid grid-cols-2 gap-4">
+                    <button id="leaderboard-button-from-start" class="button-secondary text-white font-semibold py-3 px-4 rounded-xl">
+                        🏆 Ranglista
+                    </button>
+                    <button id="rules-button" class="button-secondary text-white font-semibold py-3 px-4 rounded-xl">
+                        📜 Szabályok
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- 2. BEÁLLÍTÁSOK KÉPERNYŐ -->
+        <div id="settings-screen" class="screen hidden">
+            <div class="p-2">
+                <h2 class="text-2xl font-bold text-white mb-6 text-center border-b border-slate-700 pb-2">Beállítások</h2>
+                
+                <div class="space-y-6">
+                    <!-- Nehézség -->
+                    <div>
+                        <label class="block text-sm font-bold text-slate-400 mb-2 uppercase tracking-wide">Nehézségi szint</label>
+                        <select id="difficulty-selector" class="w-full p-3 rounded-lg bg-slate-900 text-white border border-slate-600 focus:border-indigo-500 outline-none">
+                            <!-- JS tölti ki -->
+                        </select>
+                    </div>
+
+                    <!-- Időmérő -->
+                    <div class="flex items-center justify-between bg-slate-900 p-3 rounded-lg border border-slate-700">
+                        <span class="text-white font-medium">Időre megy? <span id="timer-setting" class="text-xs text-indigo-400 block"></span></span>
+                        <label class="relative inline-flex items-center cursor-pointer">
+                            <input type="checkbox" id="timer-enabled" class="sr-only peer">
+                            <div class="w-11 h-6 bg-slate-700 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-indigo-600"></div>
+                        </label>
+                    </div>
+
+                    <!-- Audio -->
+                    <div class="flex gap-4">
+                        <div class="flex-1 bg-slate-900 p-3 rounded-lg border border-slate-700 flex items-center justify-between">
+                            <span class="text-white text-sm">Zene 🎵</span>
+                            <input type="checkbox" id="music-enabled" checked class="accent-indigo-500 h-5 w-5">
+                        </div>
+                        <div class="flex-1 bg-slate-900 p-3 rounded-lg border border-slate-700 flex items-center justify-between">
+                            <span class="text-white text-sm">Hangok 🔊</span>
+                            <input type="checkbox" id="sfx-enabled" checked class="accent-indigo-500 h-5 w-5">
+                        </div>
+                    </div>
+
+                    <!-- Témák -->
+                    <div>
+                        <label class="block text-sm font-bold text-slate-400 mb-2 uppercase tracking-wide">Témák (Válassz!)</label>
+                        <div id="theme-checkboxes" class="grid grid-cols-2 gap-2 max-h-40 overflow-y-auto custom-scrollbar">
+                            <!-- JS tölti ki -->
+                        </div>
+                    </div>
+                </div>
+
+                <div class="flex gap-4 mt-8">
+                    <button id="exit-button" class="w-1/3 button-secondary text-white font-bold py-3 rounded-lg">
+                        Vissza
+                    </button>
+                    <button id="start-game-button" class="w-2/3 button-action text-white font-bold py-3 rounded-lg disabled:opacity-50 disabled:cursor-not-allowed">
+                        START
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- 3. JÁTÉK KÉPERNYŐ -->
+        <div id="game-screen" class="screen hidden">
+            <!-- Statisztika Sáv -->
+            <div id="game-stats" class="flex justify-between items-center bg-slate-900 p-3 rounded-lg mb-4 border border-slate-700 shadow-inner">
+                <div class="text-center">
+                    <p class="text-xs text-slate-400 uppercase">Lépés</p>
+                    <p id="moves-count" class="text-xl font-bold text-indigo-400">0</p>
+                </div>
+                <div class="text-center px-4 border-x border-slate-700">
+                    <p class="text-xs text-slate-400 uppercase">Hiba</p>
+                    <p id="mistakes-count" class="text-xl font-bold text-red-400">0</p>
+                </div>
+                <div class="text-center">
+                    <p id="timer-label" class="text-xs text-slate-400 uppercase">Idő</p>
+                    <p id="timer-display" class="text-xl font-bold text-white">00:00</p>
+                </div>
+            </div>
+            
+            <!-- Győzelmi Üzenet Helye -->
+            <div id="message-container" class="hidden mb-4 p-4 bg-indigo-900/50 border border-indigo-500 rounded-lg text-center animate-pulse">
+                <!-- JS tölti ki -->
+            </div>
+
+            <!-- Játéktábla -->
+            <div id="game-board" class="game-grid mb-8"> <!-- mb-6-ról mb-8-ra növelve a távolság növeléséért -->
+                <!-- JS generálja -->
+            </div>
+            
+            <div class="flex gap-3">
+                <button id="back-to-menu-button" class="flex-1 button-secondary text-white font-bold py-3 rounded-lg">
+                    Kilépés
+                </button>
+                <button id="reset-button" class="flex-1 bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-3 rounded-lg transition shadow-[0_4px_0_#3730a3] active:shadow-none active:translate-y-1">
+                    Újra
+                </button>
+            </div>
+        </div>
+
+        <!-- 4. RANGLISTA KÉPERNYŐ -->
+        <div id="leaderboard-screen" class="screen hidden">
+            <h2 class="text-3xl font-bold text-white mb-2 text-center">Toplisták 🏆</h2>
+            <p class="text-xs text-slate-400 text-center mb-6">A legjobb eredmények a felhőben (Firebase)</p>
+            
+            <div class="bg-slate-900 rounded-xl overflow-hidden border border-slate-700 shadow-lg mb-6">
+                <div class="flex bg-slate-800 p-3 text-xs font-bold text-slate-400 uppercase tracking-wider">
+                    <div class="w-10 text-center">#</div>
+                    <div class="flex-1">Játékos</div>
+                    <div class="w-20 text-center">Pont/Lép</div>
+                    <div class="w-16 text-right">Mód</div>
+                </div>
+                <div id="scores-container" class="text-sm max-h-[300px] overflow-y-auto">
+                    <div class="p-8 text-center text-slate-500 animate-pulse">Adatok betöltése...</div>
+                </div>
+            </div>
+
+            <button id="leaderboard-back-button" class="w-full button-secondary text-white font-bold py-3 rounded-lg">
+                Vissza a menübe
+            </button>
+        </div>
+        
+        <!-- 5. SZABÁLYOK -->
+        <div id="rules-screen" class="screen hidden">
+            <h2 class="text-2xl font-bold text-white mb-4 text-center">Játékszabályok</h2>
+            <div id="rules-content" class="bg-slate-900 p-5 rounded-xl border border-slate-700 text-slate-300 space-y-4 text-sm leading-relaxed mb-6">
+                <!-- JS tölti ki -->
+            </div>
+            <button id="rules-back-button" class="w-full button-secondary text-white font-bold py-3 rounded-lg">
+                Értem, vissza!
+            </button>
+        </div>
+
+    </div>
+
+    <!-- Névbekérő Modal -->
+    <div id="name-input-modal" class="hidden fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 z-50">
+        <div class="bg-slate-800 p-6 rounded-2xl shadow-2xl w-full max-w-sm border border-slate-600 transform transition-all scale-100">
+            <div class="text-center mb-6">
+                <div class="text-5xl mb-2">🎉</div>
+                <h3 class="text-2xl font-bold text-white">Új Rekord!</h3>
+                <p class="text-slate-400 text-sm">Írd be a neved az örökkévalóságnak:</p>
+            </div>
+            <input type="text" id="player-name-input" class="w-full p-4 rounded-xl bg-slate-900 text-white border-2 border-slate-700 focus:border-indigo-500 focus:ring-0 outline-none mb-4 text-center text-lg font-bold" placeholder="NEVED" maxlength="15">
+            <button id="submit-score-button" class="w-full button-action text-white font-bold py-3 rounded-xl">
+                MENTÉS
+            </button>
+        </div>
+    </div>
+
+    <!-- Firebase Script -->
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+        import { getAuth, signInAnonymously, signInWithCustomToken } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getFirestore, collection, addDoc, query, orderBy, limit, onSnapshot, serverTimestamp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+
+        const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
+        const firebaseConfig = JSON.parse(typeof __firebase_config !== 'undefined' ? __firebase_config : '{}');
+        const initialAuthToken = typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : null;
+
+        window.firebaseApp = { db: null, userId: null, saveScore: null, loadLeaderboard: null, isReady: false };
+        let isFirebaseInit = false; // Új jelző a kezdeti inicializáláshoz
+
+        async function initFirebase() {
+            if (isFirebaseInit) return; // Csak egyszer fuss le
+            isFirebaseInit = true;
+
+            try {
+                const app = initializeApp(firebaseConfig);
+                const db = getFirestore(app);
+                const auth = getAuth(app);
+                
+                if (initialAuthToken) await signInWithCustomToken(auth, initialAuthToken);
+                else await signInAnonymously(auth);
+                
+                const userId = auth.currentUser?.uid || crypto.randomUUID();
+                
+                // Export functions
+                window.firebaseApp.db = db;
+                window.firebaseApp.userId = userId;
+                window.firebaseApp.isReady = true; // MOST állítjuk be, hogy kész van
+
+                window.firebaseApp.saveScore = async (data) => {
+                    if (!window.firebaseApp.isReady) throw new Error("Firebase nem elérhető.");
+                    const col = collection(db, `/artifacts/${appId}/public/data/memory_scores`);
+                    
+                    // Pontszámítás: minél kisebb idő és lépés, annál jobb (ezért a mínusz előjel)
+                    const scoreBase = data.isTimeBased 
+                        ? (data.maxTime * 100) - (data.timeElapsed * 2) - (data.incorrectMoves * 5)
+                        : -(data.totalMoves * 10) - (data.incorrectMoves * 5); // Csak lépésnél a lépések számítanak negatívan
+
+                    await addDoc(col, {
+                        ...data,
+                        userId,
+                        score: scoreBase,
+                        createdAt: serverTimestamp()
+                    });
+                };
+
+                window.firebaseApp.loadLeaderboard = (callback) => {
+                    if (!window.firebaseApp.isReady) {
+                        console.log("Firebase nem elérhető, betöltés kihagyva.");
+                        return () => {}; // Üres unsub
+                    }
+                    const col = collection(db, `/artifacts/${appId}/public/data/memory_scores`);
+                    const q = query(col, orderBy("score", "desc"), limit(10));
+                     return onSnapshot(q, (snapshot) => {
+                        const scores = [];
+                        snapshot.forEach(doc => scores.push(doc.data()));
+                        callback(scores);
+                    }, (err) => {
+                        console.error("Firebase hiba:", err);
+                        callback([]);
+                    });
+                };
+                
+            } catch (e) {
+                console.error("Firebase Init Error:", e);
+                window.firebaseApp.isReady = false;
+            }
+        }
+        // Az inicializálást itt hívjuk meg
+        initFirebase();
+    </script>
+
+    <script>
+        // --- Játék Változók ---
+        const screens = {
+            start: document.getElementById('start-screen'),
+            settings: document.getElementById('settings-screen'),
+            game: document.getElementById('game-screen'),
+            leaderboard: document.getElementById('leaderboard-screen'),
+            rules: document.getElementById('rules-screen')
+        };
+        const els = {
+            gameBoard: document.getElementById('game-board'),
+            moves: document.getElementById('moves-count'),
+            mistakes: document.getElementById('mistakes-count'),
+            timer: document.getElementById('timer-display'),
+            timerLabel: document.getElementById('timer-label'),
+            msgContainer: document.getElementById('message-container'),
+            difficulty: document.getElementById('difficulty-selector'),
+            themes: document.getElementById('theme-checkboxes'),
+            modal: document.getElementById('name-input-modal'),
+            nameInput: document.getElementById('player-name-input'),
+            timerSetting: document.getElementById('timer-setting'),
+            rulesContent: document.getElementById('rules-content')
+        };
+
+        // Adatok
+        const difficulties = {
+            very_easy: { name: 'Kezdő (3x3)', pairs: 4, time: 60, cls: 'very-easy' },
+            easy: { name: 'Normál (4x4)', pairs: 8, time: 90, cls: 'easy' },
+            medium: { name: 'Haladó (4x5)', pairs: 10, time: 120, cls: 'medium' },
+            hard: { name: 'Profi (4x6)', pairs: 12, time: 150, cls: 'hard' },
+            extra_hard: { name: 'Mester (6x6)', pairs: 18, time: 200, cls: 'extra-hard' }
+        };
+        
+        const themes = {
+            flags: { name: 'Zászlók', icons: ['🇺🇸', '🇪🇺', '🇭🇺', '🇨🇦', '🇯🇵', '🇮🇳', '🇧🇷', '🇦🇺', '🇬🇧', '🇨🇳', '🇩🇪', '🇰🇷', '🇮🇹', '🇪🇸', '🇵🇱', '🇹🇷', '🇷🇺', '🇲🇽'] },
+            space: { name: 'Űr & Tech', icons: ['🚀', '🛸', '🛰️', '🪐', '👽', '👾', '🤖', '🌠', '🌌', '🌑', '🔭', '🧬', '🧪', '💻', '📡', '🕹️', '🔋', '💾'] },
+            animals: { name: 'Állatok', icons: ['🦁', '🐘', '🦊', '🐻', '🐼', '🦒', '🐙', '🐸', '🦉', '🦋', '🐳', '🦈', '🐅', '🐆', '🦓', '🦘', '🦖', '🦄'] },
+            fruits: { name: 'Gyümölcs', icons: ['🍎', '🍌', '🍇', '🍉', '🍓', '🥝', '🍒', '🍍', '🥭', '🥥', '🍑', '🍋', '🍐', '🍊', '🍈', '🍅', '🥑', '🍆'] },
+            sports: { name: 'Sport', icons: ['⚽', '🏀', '🏈', '⚾', '🎾', '🏐', '🏉', '🎱', '🏓', '🏸', '🏒', '🥊', '🥋', '⛷️', '🏂', '🏄', '🏊', '🚴'] }
+        };
+
+        let state = {
+            cards: [],
+            flipped: [],
+            matched: 0,
+            moves: 0,
+            mistakes: 0,
+            locked: false,
+            timer: null,
+            timeLeft: 0,
+            timeElapsed: 0,
+            startTime: 0,
+            isTimeBased: false,
+            musicPlaying: false,
+            pendingScore: null,
+            leaderboardUnsub: null
+        };
+
+        // --- Audio (Tone.js) ---
+        let synth = { match: null, miss: null, win: null, music: null, bass: null };
+        let isAudioInit = false;
+
+        function initAudio() {
+            if (isAudioInit) return;
+            isAudioInit = true;
+
+            // SFX
+            synth.match = new Tone.PolySynth(Tone.Synth).toDestination();
+            synth.match.volume.value = -5;
+            synth.miss = new Tone.MembraneSynth().toDestination();
+            synth.win = new Tone.PolySynth(Tone.Synth, { oscillator: { type: "triangle" }, envelope: { attack: 0.01, decay: 0.1, sustain: 0.3, release: 1 } }).toDestination();
+
+            // MUSIC - SYNTHWAVE STYLE
+            const bassFilter = new Tone.Filter(400, "lowpass").toDestination();
+            synth.bass = new Tone.MonoSynth({ oscillator: { type: "sawtooth" }, envelope: { attack: 0.01, decay: 0.2, sustain: 0.4, release: 0.2 } }).connect(bassFilter);
+            synth.bass.volume.value = -8;
+
+            const leadDelay = new Tone.FeedbackDelay("8n.", 0.3).toDestination();
+            synth.music = new Tone.PolySynth(Tone.Synth, { oscillator: { type: "square" }, envelope: { attack: 0.05, decay: 0.1, sustain: 0.1, release: 1 } }).connect(leadDelay);
+            synth.music.volume.value = -12;
+
+            const bassLoop = new Tone.Sequence((time, note) => { synth.bass.triggerAttackRelease(note, "8n", time); }, ["C2", "C2", "E2", "C2", "F2", "F2", "G2", "B1"], "8n");
+            const melodyLoop = new Tone.Sequence((time, note) => { if(Math.random() > 0.3) synth.music.triggerAttackRelease(note, "16n", time); }, ["C5", "E5", "G5", "B5", "C6", "B5", "G5", "E5"], "4n");
+            Tone.Transport.bpm.value = 110;
+
+            state.startMusic = () => {
+                if (document.getElementById('music-enabled').checked) {
+                    bassLoop.start(0);
+                    melodyLoop.start(0);
+                    Tone.Transport.start();
+                    state.musicPlaying = true;
+                }
+            };
+            state.stopMusic = () => {
+                Tone.Transport.stop();
+                state.musicPlaying = false;
+            };
+        }
+
+        function playSound(type) {
+            if (!document.getElementById('sfx-enabled').checked) return;
+            if (Tone.context.state !== 'running') Tone.start();
+
+            switch(type) {
+                case 'match': synth.match.triggerAttackRelease(["C5", "E5"], "16n"); break;
+                case 'miss': synth.miss.triggerAttackRelease("A1", "8n"); break;
+                case 'win': synth.win.triggerAttackRelease(["C4", "E4", "G4", "C5", "E5", "G5"], "8n", Tone.now(), 0.1); break;
+            }
+        }
+
+        // --- Logika ---
+        function switchScreen(id) {
+            Object.values(screens).forEach(s => s.classList.add('hidden'));
+            screens[id].classList.remove('hidden');
+            
+            // Layout fix
+            const container = document.getElementById('main-container');
+            container.className = "w-full p-6 bg-slate-800 rounded-2xl shadow-2xl border border-slate-700 transition-all duration-300";
+            
+            if (id === 'game') {
+                const diff = difficulties[els.difficulty.value || 'easy'];
+                if (diff.cls === 'very-easy') container.classList.add('max-w-sm');
+                else if (diff.cls === 'extra-hard') container.classList.add('max-w-4xl');
+                else container.classList.add('max-w-lg');
+            } else {
+                container.classList.add('max-w-lg');
+            }
+
+            if (id === 'start' || id === 'settings') {
+                if(state.musicPlaying) state.stopMusic();
+            }
+            if (state.leaderboardUnsub && id !== 'leaderboard') {
+                state.leaderboardUnsub();
+                state.leaderboardUnsub = null;
+            }
+        }
+
+        function startGame() {
+            if (Tone.context.state !== 'running') Tone.start();
+            state.startMusic();
+
+            const diffKey = els.difficulty.value;
+            const diff = difficulties[diffKey];
+            state.isTimeBased = document.getElementById('timer-enabled').checked;
+
+            // Témák kiválasztása és kártyák generálása
+            const checkedThemes = Array.from(els.themes.querySelectorAll('input:checked')).map(i => i.value);
+            let icons = [];
+            checkedThemes.forEach(t => icons.push(...themes[t].icons));
+            icons = icons.sort(() => 0.5 - Math.random()).slice(0, diff.pairs);
+            
+            // Kártyák keverése
+            let deck = [...icons, ...icons];
+            if (diff.cls === 'very-easy' && deck.length === 8) deck.push(null); // 3x3 fix (9. hely üres)
+            deck.sort(() => 0.5 - Math.random());
+
+            // Reset State
+            state.cards = deck;
+            state.flipped = [];
+            state.matched = 0;
+            state.moves = 0;
+            state.mistakes = 0;
+            state.locked = false;
+            state.startTime = Date.now();
+            
+            if (state.timer) clearInterval(state.timer);
+            
+            // UI Reset
+            els.gameBoard.innerHTML = '';
+            els.gameBoard.className = `game-grid ${diff.cls}`;
+            els.moves.textContent = '0';
+            els.mistakes.textContent = '0';
+            els.msgContainer.classList.add('hidden');
+            document.getElementById('game-stats').classList.remove('hidden');
+
+            // Render
+            deck.forEach((icon, idx) => {
+                const card = document.createElement('div');
+                if (icon === null) {
+                    card.className = 'card empty-slot';
+                } else {
+                    card.className = 'card';
+                    card.dataset.val = icon;
+                    card.dataset.id = idx;
+                    card.innerHTML = `
+                        <div class="card-face card-front">${icon}</div>
+                        <div class="card-face card-back">?</div>
+                    `;
+                    card.onclick = () => handleCardClick(card);
+                }
+                els.gameBoard.appendChild(card);
+            });
+
+            // Időmérő
+            state.timeLeft = diff.time;
+            updateTimerUI();
+            state.timer = setInterval(() => {
+                if (state.isTimeBased) {
+                    state.timeLeft--;
+                    if (state.timeLeft <= 0) endGame(false);
+                }
+                state.timeElapsed = Math.floor((Date.now() - state.startTime) / 1000);
+                updateTimerUI();
+            }, 1000);
+
+            switchScreen('game');
+        }
+
+        function handleCardClick(card) {
+            if (state.locked || card.classList.contains('flipped') || card.classList.contains('matched')) return;
+
+            card.classList.add('flipped');
+            state.flipped.push(card);
+
+            if (state.flipped.length === 2) {
+                state.locked = true;
+                state.moves++;
+                els.moves.textContent = state.moves;
+                checkMatch();
+            }
+        }
+
+        function checkMatch() {
+            const [c1, c2] = state.flipped;
+            const match = c1.dataset.val === c2.dataset.val;
+
+            if (match) {
+                playSound('match');
+                state.matched++;
+                setTimeout(() => {
+                    c1.classList.add('matched');
+                    c2.classList.add('matched');
+                    resetFlip();
+                    // Check Win
+                    const pairsTotal = difficulties[els.difficulty.value].pairs;
+                    if (state.matched >= pairsTotal) endGame(true);
+                }, 500);
+            } else {
+                playSound('miss');
+                state.mistakes++;
+                els.mistakes.textContent = state.mistakes;
+                setTimeout(() => {
+                    c1.classList.remove('flipped');
+                    c2.classList.remove('flipped');
+                    resetFlip();
+                }, 1000);
+            }
+        }
+
+        function resetFlip() {
+            state.flipped = [];
+            state.locked = false;
+        }
+
+        function updateTimerUI() {
+            let val = state.isTimeBased ? state.timeLeft : state.timeElapsed;
+            let min = Math.floor(val / 60);
+            let sec = val % 60;
+            els.timer.textContent = `${min}:${sec < 10 ? '0'+sec : sec}`;
+            els.timerLabel.textContent = state.isTimeBased ? "Hátralévő" : "Eltelt";
+            
+            if (state.isTimeBased && state.timeLeft < 10) els.timer.classList.add('text-red-500');
+            else els.timer.classList.remove('text-red-500');
+        }
+
+        function endGame(win) {
+            clearInterval(state.timer);
+            state.stopMusic();
+            
+            if (win) {
+                playSound('win');
+                state.pendingScore = {
+                    difficulty: difficulties[els.difficulty.value].name,
+                    pairs: difficulties[els.difficulty.value].pairs,
+                    totalMoves: state.moves,
+                    incorrectMoves: state.mistakes,
+                    // Mentjük a ténylegesen eltelt időt
+                    timeElapsed: state.isTimeBased ? (difficulties[els.difficulty.value].time - state.timeLeft) : state.timeElapsed,
+                    maxTime: difficulties[els.difficulty.value].time,
+                    isTimeBased: state.isTimeBased
+                };
+                
+                // Show Modal
+                els.modal.classList.remove('hidden');
+                els.nameInput.focus();
+            } else {
+                playSound('miss');
+                els.msgContainer.innerHTML = `<h3 class="text-2xl font-bold text-red-400">Lejárt az idő! ⌛</h3><p class="text-white">Próbáld újra!</p>`;
+                els.msgContainer.classList.remove('hidden');
+            }
+        }
+
+        // --- Ranglista Kezelés JAVÍTVA ---
+        function showLeaderboard() {
+            switchScreen('leaderboard');
+            const container = document.getElementById('scores-container');
+            container.innerHTML = '<div class="p-8 text-center text-slate-500 animate-pulse">Adatok betöltése...</div>';
+
+            // Ellenőrzés, hogy a Firebase készen áll-e
+            if (!window.firebaseApp.isReady) {
+                // Ha még nincs kész, adunk neki 1.5 mp-et
+                setTimeout(() => {
+                    if (window.firebaseApp.isReady) {
+                        loadScores();
+                    } else {
+                        container.innerHTML = '<div class="p-8 text-center text-red-400">Adatbázis hiba: Nem sikerült csatlakozni.</div>';
+                    }
+                }, 1500);
+                return;
+            }
+            
+            loadScores();
+        }
+
+        function loadScores() {
+             const container = document.getElementById('scores-container');
+             if (window.firebaseApp.loadLeaderboard) {
+                if (state.leaderboardUnsub) state.leaderboardUnsub(); // Előző listenert leállítjuk
+                
+                state.leaderboardUnsub = window.firebaseApp.loadLeaderboard((data) => {
+                    if (!data || data.length === 0) {
+                        container.innerHTML = '<div class="p-8 text-center text-slate-500">Még nincs rekord. Te lehetsz az első!</div>';
+                        return;
+                    }
+                    
+                    let html = '';
+                    // A Firebase már rendezve küldi, de biztos ami biztos rendezzük kliens oldalon is
+                    data.sort((a,b) => b.score - a.score); 
+                    
+                    data.forEach((d, i) => {
+                        if (!d || typeof d.score === 'undefined') return;
+                        
+                        const isTime = d.isTimeBased;
+                        let scoreDisplay;
+                        if(isTime) {
+                            scoreDisplay = Math.round(d.score);
+                        } else {
+                            // A lépéseket (negatív pontszámot) pozitívként jelenítjük meg
+                            scoreDisplay = d.totalMoves; 
+                        }
+                        
+                        const type = isTime ? '⏱️' : '👣';
+                        const name = d.playerName || 'Ismeretlen';
+                        const rankColor = i === 0 ? 'top-rank' : (i===1 ? 'text-slate-300' : (i===2 ? 'text-orange-400' : 'text-slate-400'));
+                        
+                        html += `
+                        <div class="score-row flex items-center p-3 border-b border-slate-700/50">
+                            <div class="w-10 text-center font-bold ${rankColor}">${i+1}.</div>
+                            <div class="flex-1 font-medium truncate text-white">${name}</div>
+                            <div class="w-20 text-center text-indigo-300 font-mono font-bold">${scoreDisplay}</div>
+                            <div class="w-16 text-right text-xs text-slate-500" title="${d.difficulty}">${type}</div>
+                        </div>`;
+                    });
+                    container.innerHTML = html;
+                });
+            }
+        }
+
+        function updateTimerSettingDisplay() {
+            const isChecked = document.getElementById('timer-enabled').checked;
+            els.timerSetting.textContent = isChecked ? '(Siess!)' : '(Csak lazán)';
+        }
+
+        function populateRules() {
+            els.rulesContent.innerHTML = `
+                <p>1. <strong class="text-indigo-400">A játék célja:</strong> Fordíts fel két kártyát, és ha azok azonosak, eltűnnek a tábláról.</p>
+                <p class="text-center my-4 text-7xl">
+                    <span class="p-2 border-2 border-indigo-500 rounded-lg bg-white inline-block">🥝</span>
+                    <span class="p-2 border-2 border-indigo-500 rounded-lg bg-white inline-block">🥝</span> 
+                </p>
+                
+                <p>2. <strong class="text-indigo-400">Lépésszámláló és hiba:</strong> Minden két kártya felfordítása egy lépésnek számít. Ha nem egyeznek, az hiba. A pontszám a lépések és hibák alapján kalkulálódik.</p>
+                <p class="text-center my-4 text-7xl">
+                    <span class="p-2 border-2 border-red-500 rounded-lg bg-white inline-block">🚀</span>
+                    <span class="p-2 border-2 border-red-500 rounded-lg bg-white inline-block">🦁</span>
+                </p>
+
+                <p>3. <strong class="text-indigo-400">Játékmódok:</strong>
+                    <ul class="list-disc list-inside ml-4 mt-2 space-y-1">
+                        <li><b>Időre (⏱️):</b> Egy adott időn belül kell befejezni. Minél kevesebb idő, és hiba, annál több pont.</li>
+                        <li><b>Gyakorló (👣):</b> Nincs időkorlát, a cél a minél kevesebb lépésszám. Itt a lépések száma (ami alacsonyabb, az jobb) alapján kerül be a ranglistára.</li>
+                    </ul>
+                </p>
+                <p>4. <strong class="text-indigo-400">Ranglista:</strong> A legjobb 10 eredmény bekerül a globális ranglistára!</p>
+            `;
+        }
+
+        // --- Init ---
+        function init() {
+            // Dropdowns
+            els.difficulty.innerHTML = Object.keys(difficulties).map(k => `<option value="${k}">${difficulties[k].name}</option>`).join('');
+            els.themes.innerHTML = Object.keys(themes).map(k => `
+                <label class="flex items-center space-x-2 p-2 bg-slate-800 rounded border border-slate-700 cursor-pointer hover:bg-slate-700">
+                    <input type="checkbox" value="${k}" checked class="rounded text-indigo-500 bg-slate-900 border-slate-600 focus:ring-offset-0 focus:ring-0">
+                    <span class="text-sm text-slate-300">${themes[k].name}</span>
+                </label>
+            `).join('');
+
+            // Listeners
+            document.getElementById('start-button').onclick = () => switchScreen('settings');
+            document.getElementById('start-game-button').onclick = startGame;
+            document.getElementById('reset-button').onclick = startGame;
+            
+            // Játék képernyő: Kilépés gomb
+            document.getElementById('back-to-menu-button').onclick = () => switchScreen('start'); 
+            
+            document.getElementById('exit-button').onclick = () => switchScreen('start');
+            document.getElementById('leaderboard-button-from-start').onclick = showLeaderboard;
+            document.getElementById('leaderboard-back-button').onclick = () => switchScreen('start');
+            document.getElementById('rules-button').onclick = () => {
+                populateRules(); // Szabályok feltöltése ikonokkal
+                switchScreen('rules');
+            };
+            document.getElementById('rules-back-button').onclick = () => switchScreen('start');
+            
+            document.getElementById('timer-enabled').onchange = updateTimerSettingDisplay;
+
+            document.getElementById('submit-score-button').onclick = () => {
+                const name = els.nameInput.value.trim() || 'Névtelen';
+                if (window.firebaseApp.saveScore && state.pendingScore) {
+                    window.firebaseApp.saveScore({ ...state.pendingScore, playerName: name })
+                        .then(() => {
+                            els.modal.classList.add('hidden');
+                            els.nameInput.value = '';
+                            showLeaderboard(); // Mutassuk meg az új ranglistát
+                        })
+                        .catch(err => {
+                            console.error("Hiba a pontszám mentésekor:", err);
+                            alert("Hiba történt a pontszám mentésekor."); // Külön üzenet mentési hibára
+                            els.modal.classList.add('hidden');
+                        });
+                } else {
+                    els.modal.classList.add('hidden');
+                }
+            };
+            
+            // Audio init on first click
+            document.body.addEventListener('click', () => {
+                if (!isAudioInit) initAudio();
+                if (Tone.context.state !== 'running') Tone.start();
+            }, { once: true });
+
+            updateTimerSettingDisplay(); // Kezdeti időmérő állapot
+            switchScreen('start');
+        }
+        
+        window.onload = init;
+
+    </script>
+
+</body>
+</html>
