@@ -316,7 +316,7 @@
     <!-- Kilépés Megerősítő Modal -->
     <div id="exit-confirmation-modal" class="hidden fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 z-50">
         <div class="bg-slate-800 p-6 rounded-2xl shadow-2xl w-full max-w-sm border border-slate-600 transform transition-all scale-100 text-center">
-            <div class="text-6xl mb-4">🥺</div>
+            <div id="exit-smiley" class="text-6xl mb-4 transition-all duration-300">🥺</div>
             <h3 class="text-2xl font-bold text-white mb-2">Már mész is?</h3>
             <p class="text-slate-400 text-sm mb-6">Ha most kilépsz, az eddigi eredményed elveszik a kozmoszban!</p>
             
@@ -435,6 +435,7 @@
             rulesContent: document.getElementById('rules-content'),
             // Új modal elemek
             exitModal: document.getElementById('exit-confirmation-modal'),
+            exitSmiley: document.getElementById('exit-smiley'),
             btnCancelExit: document.getElementById('cancel-exit-button'),
             btnConfirmExit: document.getElementById('confirm-exit-button')
         };
@@ -855,17 +856,61 @@
                             els.exitModal.classList.remove('hidden');
                         };
                         
-                        // Kilépés modal gombjai
-                        els.btnCancelExit.onclick = () => {
-                            els.exitModal.classList.add('hidden');
-                        };
-                        els.btnConfirmExit.onclick = () => {
-                            els.exitModal.classList.add('hidden');
-                            switchScreen('start');
-                        };
+                                    // Kilépés modal gombjai - Animált Smiley-kkal
                         
-                        document.getElementById('exit-button').onclick = () => switchScreen('start');            document.getElementById('leaderboard-button-from-start').onclick = showLeaderboard;
-            document.getElementById('leaderboard-back-button').onclick = () => switchScreen('start');
+                                    els.btnCancelExit.onclick = () => {
+                        
+                                        els.exitSmiley.textContent = '😁'; // Széles vigyor
+                        
+                                        els.exitSmiley.classList.add('scale-125');
+                        
+                                        setTimeout(() => {
+                        
+                                            els.exitModal.classList.add('hidden');
+                        
+                                            els.exitSmiley.textContent = '🥺'; // Vissza alapra
+                        
+                                            els.exitSmiley.classList.remove('scale-125');
+                        
+                                        }, 1000);
+                        
+                                    };
+                        
+                                    
+                        
+                                    els.btnConfirmExit.onclick = () => {
+                        
+                                        els.exitSmiley.textContent = '😉'; // Sanda kacsintás
+                        
+                                        els.exitSmiley.classList.add('scale-110');
+                        
+                                        setTimeout(() => {
+                        
+                                            els.exitModal.classList.add('hidden');
+                        
+                                            els.exitSmiley.textContent = '🥺'; // Vissza alapra
+                        
+                                            els.exitSmiley.classList.remove('scale-110');
+                        
+                                            switchScreen('start');
+                        
+                                        }, 2000);
+                        
+                                    };
+                        
+                                    
+                        
+                                    document.getElementById('exit-button').onclick = () => switchScreen('start');
+                        
+                                    document.getElementById('leaderboard-button-from-start').onclick = () => {
+                        
+                                        console.log("Ranglista megnyitása...");
+                        
+                                        showLeaderboard();
+                        
+                                    };
+                        
+                                    document.getElementById('leaderboard-back-button').onclick = () => switchScreen('start');
             document.getElementById('rules-button').onclick = () => {
                 populateRules(); // Szabályok feltöltése ikonokkal
                 switchScreen('rules');
