@@ -323,12 +323,29 @@
         </div>
     </div>
 
-    <!-- API Script (Firebase helyett PHP) -->
+    <!-- API Script (PHP + LocalStorage Fallback) -->
     <script>
         window.apiApp = {
             isReady: true,
+            
+            // Segédfüggvény: LocalStorage kezelés fallback esetén
+            _localSave: (data) => {
+                const lsKey = 'memory_game_local_scores';
+                let scores = JSON.parse(localStorage.getItem(lsKey) || '[]');
+                scores.push({ ...data, createdAt: new Date().toISOString() });
+                localStorage.setItem(lsKey, JSON.stringify(scores));
+                console.warn("Offline mód: Eredmény helyben mentve (szerver nem elérhető).");
+            },
+            
+            _localLoad: () => {
+                const lsKey = 'memory_game_local_scores';
+                const scores = JSON.parse(localStorage.getItem(lsKey) || '[]');
+                console.warn("Offline mód: Helyi eredmények betöltve.");
+                return scores;
+            },
+
             saveScore: async (data) => {
-                // Pontszámítás: ugyanaz a logika, mint korábban
+                // Pontszámítás
                 const scoreBase = data.isTimeBased 
                     ? (data.maxTime * 100) - (data.timeElapsed * 2) - (data.incorrectMoves * 5)
                     : -(data.totalMoves * 10) - (data.incorrectMoves * 5);
@@ -336,27 +353,36 @@
                 const payload = { ...data, score: scoreBase };
 
                 try {
+                    // Próbáljuk elérni a PHP szervert
                     const response = await fetch('scores.php', {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify(payload)
                     });
+                    
+                    if (!response.ok) throw new Error("Szerver hiba");
                     return await response.json();
+                    
                 } catch (e) {
-                    console.error("API Mentési hiba:", e);
-                    throw e;
+                    // Ha nem sikerül (pl. helyi gép file://), mentsünk localStorage-ba
+                    console.log("Szerver nem elérhető, váltás offline módra...", e);
+                    window.apiApp._localSave(payload);
+                    return { success: true, offline: true };
                 }
             },
+
             loadLeaderboard: async (callback) => {
                 try {
                     const response = await fetch('scores.php');
+                    if (!response.ok) throw new Error("Szerver hiba");
                     const data = await response.json();
                     callback(data);
                 } catch (e) {
-                    console.error("API Betöltési hiba:", e);
-                    callback([]);
+                    console.log("Szerver nem elérhető, váltás offline módra...", e);
+                    // Fallback: LocalStorage betöltése
+                    const localData = window.apiApp._localLoad();
+                    callback(localData);
                 }
-                // Visszaadunk egy üres leállító függvényt a kompatibilitás miatt
                 return () => {};
             }
         };
