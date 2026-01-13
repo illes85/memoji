@@ -153,16 +153,20 @@
 <body class="flex flex-col items-center justify-center min-h-screen p-4">
 
     <div id="main-container" class="w-full max-w-lg p-6 bg-slate-800 rounded-2xl shadow-2xl border border-slate-700">
-        <h1 class="text-4xl font-extrabold text-center mb-8 text-transparent bg-clip-text bg-gradient-to-r from-indigo-400 to-pink-500 tracking-wider uppercase drop-shadow-sm">
-            Memória Mester
+        <h1 class="text-4xl font-extrabold text-center mb-8 text-white tracking-wider uppercase drop-shadow-sm">
+            <span class="text-transparent bg-clip-text bg-gradient-to-r from-indigo-400 to-pink-500">Memória Mester</span> 🧠✨
         </h1>
 
         <!-- 1. INDÍTÓKÉPERNYŐ -->
         <div id="start-screen" class="screen">
             <div class="flex flex-col gap-4 p-4">
-                <div class="text-center mb-8">
-                    <div class="text-7xl mb-4 animate-bounce">👾</div>
-                    <p class="text-slate-400">Edzd az agyad és döntsd meg a rekordot!</p>
+                <div class="text-center mb-10">
+                    <div class="flex justify-center gap-4 text-7xl mb-4">
+                        <div class="animate-bounce" style="animation-delay: 0s">🦄</div>
+                        <div class="animate-bounce" style="animation-delay: 0.1s">🧩</div>
+                        <div class="animate-bounce" style="animation-delay: 0.2s">🌈</div>
+                    </div>
+                    <p class="text-slate-400 font-medium">Edzd az agyad cukisággal! 😸</p>
                 </div>
                 
                 <button id="start-button" class="button-action text-white font-bold py-4 px-6 rounded-xl text-xl w-full">
@@ -259,7 +263,7 @@
             </div>
 
             <!-- Játéktábla -->
-            <div id="game-board" class="game-grid mb-8"> <!-- mb-6-ról mb-8-ra növelve a távolság növeléséért -->
+            <div id="game-board" class="game-grid mb-24"> <!-- Extra nagy távolság a véletlen kattintások ellen -->
                 <!-- JS generálja -->
             </div>
             
@@ -791,8 +795,12 @@
             document.getElementById('start-game-button').onclick = startGame;
             document.getElementById('reset-button').onclick = startGame;
             
-            // Játék képernyő: Kilépés gomb
-            document.getElementById('back-to-menu-button').onclick = () => switchScreen('start'); 
+            // Játék képernyő: Kilépés gomb (Megerősítéssel)
+            document.getElementById('back-to-menu-button').onclick = () => {
+                if(confirm("Biztosan kilépsz? A jelenlegi játékod elveszik.")) {
+                    switchScreen('start'); 
+                }
+            }; 
             
             document.getElementById('exit-button').onclick = () => switchScreen('start');
             document.getElementById('leaderboard-button-from-start').onclick = showLeaderboard;
