@@ -1,6 +1,12 @@
 <?php
+// --- HIBAKERESÉS BEKAPCSOLÁSA (Teszteléshez) ---
+ini_set('display_errors', 1);
+ini_set('display_startup_errors', 1);
+error_reporting(E_ALL);
+
 // scores.php - Memória Mester ranglista API
 header('Content-Type: application/json');
+header("Access-Control-Allow-Origin: *"); // Opcionális: CORS engedélyezése
 
 // --- ADATBÁZIS BEÁLLÍTÁSOK ---
 // Ezt töltsd ki a Nethely-s adataiddal!
@@ -12,6 +18,7 @@ $db_name = 'ADATBÁZISNÉV';
 $conn = new mysqli($db_host, $db_user, $db_pass, $db_name);
 
 if ($conn->connect_error) {
+    // Részletes hibaüzenet kiírása
     die(json_encode(['error' => 'Kapcsolódási hiba: ' . $conn->connect_error]));
 }
 
